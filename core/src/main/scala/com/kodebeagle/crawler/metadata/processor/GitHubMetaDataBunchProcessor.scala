@@ -13,23 +13,17 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
 
-package com.kodebeagle.logging
+package com.kodebeagle.crawler.metadata.processor
 
-import org.apache.log4j.{ConsoleAppender, Level, PatternLayout}
-import org.slf4j.LoggerFactory
+import scala.collection.parallel.immutable.ParSeq
 
-trait Logger {
-  val log = LoggerFactory.getLogger(this.getClass.getName)
-}
+trait GitHubMetaDataBunchProcessor {
 
-object CustomConsoleAppender{
+  def process(metaDataBatch: ParSeq[String], from: Int, since: Int, to: Int): Unit
 
-  val console = new ConsoleAppender()
-  private val PATTERN = "%m%n"
-  console.setLayout(new PatternLayout(PATTERN))
-  console.setThreshold(Level.INFO)
-  console.activateOptions()
+
 
 }

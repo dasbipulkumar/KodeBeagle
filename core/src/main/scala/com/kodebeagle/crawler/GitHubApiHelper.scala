@@ -25,8 +25,8 @@ import com.kodebeagle.configuration.KodeBeagleConfig
 import com.kodebeagle.crawler.GitHubRepoDownloader._
 import com.kodebeagle.indexer.RepoFileNameInfo
 import com.kodebeagle.logging.Logger
-import org.apache.commons.httpclient.HttpClient
 import org.apache.commons.httpclient.methods.GetMethod
+import org.apache.commons.httpclient.{HttpClient, MultiThreadedHttpConnectionManager}
 import org.apache.commons.io.FileUtils
 import org.eclipse.jgit.api.CloneCommand
 import org.json4s._
@@ -35,28 +35,35 @@ import org.json4s.jackson.JsonMethods._
 import scala.util.{Failure, Success, Try}
 
 /**
- * This class relies on Github's {https://developer.github.com/v3/} Api.
- */
+  * This class relies on Github's {https://developer.github.com/v3/} Api.
+  */
 object GitHubApiHelper extends Logger {
 
   implicit val format = DefaultFormats
-  private val client = new HttpClient()
+ // private val client = new HttpClient()
+  private val connectionManager =
+    new MultiThreadedHttpConnectionManager()
+        connectionManager.getParams().setMaxTotalConnections(
+            KodeBeagleConfig.httpclientNoOfConnections.toInt)
+        connectionManager.getParams().setDefaultMaxConnectionsPerHost(
+            KodeBeagleConfig.httpclientNoOfConnections.toInt)
+  private val client = new HttpClient(connectionManager)
   var token: String = KodeBeagleConfig.githubTokens(0)
   var retryCount: Int = 0
 
   /**
-   * Access Github's
-   * [[https://developer.github.com/v3/repos/#list-all-public-repositories List all repositories]]
- *
-   * @param since Specify id of repo to start the listing from. (Pagination)
-   */
+    * Access Github's
+    * [[https://developer.github.com/v3/repos/#list-all-public-repositories List all repositories]]
+    *
+    * @param since Specify id of repo to start the listing from. (Pagination)
+    */
   def getAllGitHubRepos(since: Int): (List[Map[String, String]], Int) = {
     val method = executeMethod(s"https://api.github.com/repositories?since=$since", token)
     val nextSinceValueRaw = Option(method.getResponseHeader("Link").getElements.toList(0).getValue)
     val nextSince = nextSinceValueRaw.get.substring(0, nextSinceValueRaw.get.length - 1).toInt
     val json = httpGetJson(method).toList
     // Here we can specify all the fields we need from repo query.
-    val interestingFields = List("full_name", "fork")
+    val interestingFields = List("id","full_name", "fork")
     val allGitHubRepos = for {
       j <- json
       c <- j.children
@@ -70,10 +77,10 @@ object GitHubApiHelper extends Logger {
   }
 
   /**
-   * Get repository details for an organization.
-   * Access Github's
-   * [[https://developer.github.com/v3/repos/#list-organization-repositories]]
-   */
+    * Get repository details for an organization.
+    * Access Github's
+    * [[https://developer.github.com/v3/repos/#list-organization-repositories]]
+    */
   def getAllGitHubReposForOrg(orgs: String, page: Int): List[RepoFileNameInfo] = {
     val method = executeMethod(s"https://api.github.com/orgs/$orgs/repos?page=$page", token)
     val json = httpGetJson(method).toList
@@ -81,8 +88,8 @@ object GitHubApiHelper extends Logger {
   }
 
   /**
-   * Parallel fetch is not worth trying since github limits per user limit of 5000 Req/hr.
-   */
+    * Parallel fetch is not worth trying since github limits per user limit of 5000 Req/hr.
+    */
   def fetchDetails(repoMap: Map[String, String]): Option[RepoFileNameInfo] = {
     for {
       repo <-
@@ -90,7 +97,17 @@ object GitHubApiHelper extends Logger {
     } yield extractRepoInfo(repo)
   }
 
+
+  def fetchAllDetails(repoMap: Map[String, String]): Option[String] = {
+    for {
+      repo <-
+      httpGetJson(executeMethod("https://api.github.com/repos/" + repoMap("full_name"), token))
+    } yield compact(render(repo))
+
+  }
+
   def extractRepoInfo(repo: JValue): RepoFileNameInfo = {
+
     RepoFileNameInfo((repo \ "owner" \ "login").extract[String],
       (repo \ "id").extract[Int], (repo \ "name").extract[String], (repo \ "fork").extract[Boolean],
       (repo \ "language").extract[String], (repo \ "default_branch").extract[String],
@@ -108,16 +125,37 @@ object GitHubApiHelper extends Logger {
      * (It it important to stick with the current version and all.)
      */
   def httpGetJson(method: GetMethod): Option[JValue] = {
-    val status = method.getStatusCode
-    if (status == 200) {
-      // ignored parsing errors if any, because we can not do anything about them anyway.
-      Try(parse(method.getResponseBodyAsString)).toOption
-    } else {
-      log.error("Request failed with status:" + status + "Response:"
-        + method.getResponseHeaders.mkString("\n") +
-        "\nResponseBody " + method.getResponseBodyAsString)
-      None
+    try {
+      val status = method.getStatusCode
+      if (status == 200) {
+        // ignored parsing errors if any, because we can not do anything about them anyway.
+        Try(parse(method.getResponseBodyAsString)).toOption
+      } else {
+
+        if (status == 403 && method.getResponseHeader("X-RateLimit-Remaining").getValue == "0"){
+
+            throw new GitHubTokenLimitExhaustedException("Current Token Exhausted",null)
+
+        }
+
+        log.error("Request failed with status:" + status + "Response:" +
+          "ResponseBody " + method.getResponseBodyAsString)
+        None
+      }
     }
+    finally {
+
+      method.releaseConnection()
+
+    }
+  }
+
+
+  class GitHubTokenLimitExhaustedException(message: String, cause: Throwable)
+        extends RuntimeException(message) {
+    if (cause != Nil) initCause(cause)
+
+    def this(message: String) = this(message, null)
   }
 
   def executeMethod(url: String, token: String): GetMethod = {
@@ -125,7 +163,8 @@ object GitHubApiHelper extends Logger {
     method.setDoAuthentication(true)
     // Please add the oauth token instead of <token> here. Or github may give 403/401 as response.
     method.addRequestHeader("Authorization", s"token $token")
-    log.debug(s"using token $token")
+    log.debug(s"$url using token $token")
+    // val client = new HttpClient()
     client.executeMethod(method)
     val requestLimitRemaining = method.getResponseHeader("X-RateLimit-Remaining").getValue
     repoDownloader ! RateLimit(requestLimitRemaining)
@@ -137,7 +176,9 @@ object GitHubApiHelper extends Logger {
     val (day, month, year) = (cal.get(Calendar.DAY_OF_MONTH), cal.get(Calendar.MONTH),
       cal.get(Calendar.YEAR))
     val githubdir = targetDir + "/" + day + "_" + month + "_" + year
-    if (!new File(githubdir).exists) { new File(githubdir).mkdirs }
+    if (!new File(githubdir).exists) {
+      new File(githubdir).mkdirs
+    }
     githubdir
   }
 
@@ -175,7 +216,7 @@ object GitHubApiHelper extends Logger {
 
   def cloneRepository(r: RepoFileNameInfo, url: String, targetDir: String): Unit = {
     val githubdir = createDirectoryWithDate(targetDir);
-    val filePath =  githubdir +
+    val filePath = githubdir +
       s"/repo~${r.login}~${r.name}~${r.id}~${r.fork}~${r.language}~${r.defaultBranch}" +
       s"~${r.stargazersCount}"
     log.info(s"Downloading $filePath")
@@ -218,8 +259,8 @@ object GitHubRepoCrawlerApp {
     log.info("page count :" + pageCount)
     (1 to pageCount) foreach { page =>
       getAllGitHubReposForOrg(organizationName, page).filter(x => !x.fork && x.language == "Java")
-        .map(x => cloneRepository(x,s"https://github.com/${x.login}/${x.name}",
-        KodeBeagleConfig.githubDir))
+        .map(x => cloneRepository(x, s"https://github.com/${x.login}/${x.name}",
+          KodeBeagleConfig.githubDir))
     }
   }
 
@@ -228,14 +269,14 @@ object GitHubRepoCrawlerApp {
     allGithubRepos.filter(x => x("fork") == "false").distinct
       .flatMap(fetchDetails).distinct.filter(x => x.language == "Java" && !x.fork)
       .map { x =>
-      if (zipOrClone.equalsIgnoreCase("clone")) {
-        cloneRepository(x, s"https://github.com/${x.login}/${x.name}",
-          KodeBeagleConfig.githubDir)
-     } else {
-        retryCount = 0
-        downloadRepository(x, KodeBeagleConfig.githubDir)
+        if (zipOrClone.equalsIgnoreCase("clone")) {
+          cloneRepository(x, s"https://github.com/${x.login}/${x.name}",
+            KodeBeagleConfig.githubDir)
+        } else {
+          retryCount = 0
+          downloadRepository(x, KodeBeagleConfig.githubDir)
+        }
       }
-    }
     next
   }
 }

@@ -13,23 +13,15 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
 
-package com.kodebeagle.logging
+package com.kodebeagle.crawler.metadata.processor
 
-import org.apache.log4j.{ConsoleAppender, Level, PatternLayout}
-import org.slf4j.LoggerFactory
+trait GitHubMetaDataRangeProcessor {
 
-trait Logger {
-  val log = LoggerFactory.getLogger(this.getClass.getName)
-}
+  def process(from: Int,to: Int): Unit
 
-object CustomConsoleAppender{
 
-  val console = new ConsoleAppender()
-  private val PATTERN = "%m%n"
-  console.setLayout(new PatternLayout(PATTERN))
-  console.setThreshold(Level.INFO)
-  console.activateOptions()
 
 }
