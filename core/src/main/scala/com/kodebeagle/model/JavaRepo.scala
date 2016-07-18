@@ -52,7 +52,7 @@ class JavaFileInfo(baseFile: FileInfo) extends FileInfo with LazyLoadSupport {
 
   private var _searchableRefs: Option[Set[ExternalTypeReference]] = None
 
-  private var _fileMetaData: Option[Set[FileMetaData]] = None
+  private var _fileMetaData: Option[FileMetaData] = None
 
   private var _imports: Option[Set[String]] = None
 
@@ -63,7 +63,7 @@ class JavaFileInfo(baseFile: FileInfo) extends FileInfo with LazyLoadSupport {
     })
   }
 
-  def fileMetaData: Set[FileMetaData] = {
+  def fileMetaData: FileMetaData = {
     getOrCompute(_fileMetaData, () => {
       parse()
       _fileMetaData.get
@@ -76,6 +76,20 @@ class JavaFileInfo(baseFile: FileInfo) extends FileInfo with LazyLoadSupport {
       _imports.get
     })
   }
+
+  override def fileName: String = baseFile.fileName
+
+  override def sloc: Int = baseFile.sloc
+
+  override def fileContent: String = baseFile.fileContent
+
+  override def language: String = baseFile.language
+
+  override def repoId: Int = baseFile.repoId
+
+  override def repoFileLocation: String = baseFile.repoFileLocation
+
+  def isTestFile(): Boolean = imports.exists(_.contains("org.junit"))
 
   /**
     * This method parses the java file and updates all that needs to be exposed by this class.
@@ -96,6 +110,17 @@ class JavaFileInfo(baseFile: FileInfo) extends FileInfo with LazyLoadSupport {
     val nodeVsType = scbr.getTypesAtPosition
     // TODO: Get this properly
     val score = 0
+    val externalTypeRefs = extractExtTypeRefs(scbr, cu, score)
+    val fileMetaData = FileMetaDataIndexer.generateMetaData(scbr, cu, repoId, fileName)
+
+    _imports = Option(scbr.getImports.toSet)
+    _searchableRefs = Option(externalTypeRefs)
+    _fileMetaData = Option(fileMetaData)
+  }
+
+  private def extractExtTypeRefs(scbr: SingleClassBindingResolver,
+                                 cu: CompilationUnit, score: Int): Set[ExternalTypeReference] = {
+    import scala.collection.JavaConversions._
     val externalTypeRefs = scbr.getMethodInvoks.values()
       // for every method in the class
       .map(invokList => {
@@ -127,26 +152,9 @@ class JavaFileInfo(baseFile: FileInfo) extends FileInfo with LazyLoadSupport {
       // Convert it back to a set of top level ExternalTypeReference object
       .map(extSet => new ExternalTypeReference(repoId, fileName, extSet, score))
       .toSet
-    // val externalTypeRef =
-
-    _imports = Option(scbr.getImports.toSet)
-    _searchableRefs = Option(externalTypeRefs)
-    _fileMetaData = ???
+    externalTypeRefs
   }
 
-  def isTestFile(): Boolean = imports.exists(_.contains("org.junit"))
-
-  override def fileName: String = baseFile.fileName
-
-  override def sloc: Int = baseFile.sloc
-
-  override def fileContent: String = baseFile.fileContent
-
-  override def language: String = baseFile.language
-
-  override def repoId: Int = baseFile.repoId
-
-  override def repoFileLocation: String = baseFile.repoFileLocation
 }
 
 class JavaRepoStatistics(repoStatistics: RepoStatistics) extends RepoStatistics {

@@ -23,7 +23,6 @@ abstract class BaseFileInfo(val filePath: String) extends Serializable
   private var _fileName: Option[String] = None
   private var _language: Option[String] = None
   private var _fileContent: Option[String] = None
-
   private var _sloc: Option[Int] = None
 
   // This extracts file name from path, without verifying if the file actually exists.

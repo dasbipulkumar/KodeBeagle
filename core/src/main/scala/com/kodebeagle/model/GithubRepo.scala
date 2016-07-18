@@ -98,10 +98,12 @@ class GithubRepo(val configuration: Configuration, val repoPath: String)
     var sizeSum: Long = 0
 
     for (fileInfo <- files) {
-      slocSum += fileInfo.readSloc()
-      sizeSum += fileInfo.readFileContent().getBytes.length
+      slocSum += fileInfo.sloc
+      sizeSum += fileInfo.fileContent.getBytes.length
     }
-    val repoStatistics: RepoStatistics = new RepoStatistics {override def sloc: Int = slocSum
+    val repoStatistics: RepoStatistics = new RepoStatistics {
+
+      override def sloc: Int = slocSum
 
       override def fileCount: Int = files.size
 
@@ -180,7 +182,7 @@ class GithubFileInfo(filePath: String, objectId: ObjectId, repository: Repositor
   }
 
   override def readSloc(): Int = {
-    Source.fromString(readFileContent()).getLines().size
+    Source.fromString(fileContent).getLines().size
   }
 
   override def repoFileLocation: String = {
