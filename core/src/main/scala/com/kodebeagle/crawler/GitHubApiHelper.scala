@@ -25,6 +25,7 @@ import com.kodebeagle.configuration.KodeBeagleConfig
 import com.kodebeagle.crawler.GitHubRepoDownloader._
 import com.kodebeagle.indexer.RepoFileNameInfo
 import com.kodebeagle.logging.Logger
+import org.apache.commons.httpclient
 import org.apache.commons.httpclient.HttpClient
 import org.apache.commons.httpclient.methods.GetMethod
 import org.apache.commons.io.FileUtils
@@ -35,9 +36,9 @@ import org.json4s.jackson.JsonMethods._
 import scala.util.{Failure, Success, Try}
 
 /**
- * This class relies on Github's {https://developer.github.com/v3/} Api.
- */
-object GitHubApiHelper extends Logger {
+  * This class relies on Github's {https://developer.github.com/v3/} Api.
+  */
+object GitHubApiHelper extends Logger with Serializable {
 
   implicit val format = DefaultFormats
   private val client = new HttpClient()
@@ -45,35 +46,24 @@ object GitHubApiHelper extends Logger {
   var retryCount: Int = 0
 
   /**
-   * Access Github's
-   * [[https://developer.github.com/v3/repos/#list-all-public-repositories List all repositories]]
- *
-   * @param since Specify id of repo to start the listing from. (Pagination)
-   */
+    * Access Github's
+    * [[https://developer.github.com/v3/repos/#list-all-public-repositories List all repositories]]
+    *
+    * @param since Specify id of repo to start the listing from. (Pagination)
+    */
   def getAllGitHubRepos(since: Int): (List[Map[String, String]], Int) = {
     val method = executeMethod(s"https://api.github.com/repositories?since=$since", token)
     val nextSinceValueRaw = Option(method.getResponseHeader("Link").getElements.toList(0).getValue)
     val nextSince = nextSinceValueRaw.get.substring(0, nextSinceValueRaw.get.length - 1).toInt
-    val json = httpGetJson(method).toList
-    // Here we can specify all the fields we need from repo query.
-    val interestingFields = List("full_name", "fork")
-    val allGitHubRepos = for {
-      j <- json
-      c <- j.children
-      map = (for {
-        JObject(child) <- c
-        JField(name, value) <- child
-        if interestingFields.contains(name)
-      } yield name -> value.values.toString).toMap
-    } yield (map)
-    (allGitHubRepos, nextSince)
+    val jsonArr = httpGetJson(method).get
+    (jsonArr.children.map(json => Map("id" -> (json \ "id").extract[String], "fork" -> (json \ "fork").extract[Boolean].toString, "full_name" -> (json \ "full_name").extract[String])), nextSince)
   }
 
   /**
-   * Get repository details for an organization.
-   * Access Github's
-   * [[https://developer.github.com/v3/repos/#list-organization-repositories]]
-   */
+    * Get repository details for an organization.
+    * Access Github's
+    * [[https://developer.github.com/v3/repos/#list-organization-repositories]]
+    */
   def getAllGitHubReposForOrg(orgs: String, page: Int): List[RepoFileNameInfo] = {
     val method = executeMethod(s"https://api.github.com/orgs/$orgs/repos?page=$page", token)
     val json = httpGetJson(method).toList
@@ -81,13 +71,23 @@ object GitHubApiHelper extends Logger {
   }
 
   /**
-   * Parallel fetch is not worth trying since github limits per user limit of 5000 Req/hr.
-   */
+    * Parallel fetch is not worth trying since github limits per user limit of 5000 Req/hr.
+    */
   def fetchDetails(repoMap: Map[String, String]): Option[RepoFileNameInfo] = {
     for {
       repo <-
       httpGetJson(executeMethod("https://api.github.com/repos/" + repoMap("full_name"), token))
     } yield extractRepoInfo(repo)
+  }
+
+
+  def fetchAllDetails(repoMap: Map[String, String]): Option[String] = {
+
+
+    for {
+      repo <-
+      httpGetJson(executeMethod("https://api.github.com/repos/" + repoMap("full_name"), token))
+    } yield compact(render(repo))
   }
 
   def extractRepoInfo(repo: JValue): RepoFileNameInfo = {
@@ -121,6 +121,7 @@ object GitHubApiHelper extends Logger {
   }
 
   def executeMethod(url: String, token: String): GetMethod = {
+    val client = new httpclient.HttpClient()
     val method = new GetMethod(url)
     method.setDoAuthentication(true)
     // Please add the oauth token instead of <token> here. Or github may give 403/401 as response.
@@ -137,7 +138,9 @@ object GitHubApiHelper extends Logger {
     val (day, month, year) = (cal.get(Calendar.DAY_OF_MONTH), cal.get(Calendar.MONTH),
       cal.get(Calendar.YEAR))
     val githubdir = targetDir + "/" + day + "_" + month + "_" + year
-    if (!new File(githubdir).exists) { new File(githubdir).mkdirs }
+    if (!new File(githubdir).exists) {
+      new File(githubdir).mkdirs
+    }
     githubdir
   }
 
@@ -175,7 +178,7 @@ object GitHubApiHelper extends Logger {
 
   def cloneRepository(r: RepoFileNameInfo, url: String, targetDir: String): Unit = {
     val githubdir = createDirectoryWithDate(targetDir);
-    val filePath =  githubdir +
+    val filePath = githubdir +
       s"/repo~${r.login}~${r.name}~${r.id}~${r.fork}~${r.language}~${r.defaultBranch}" +
       s"~${r.stargazersCount}"
     log.info(s"Downloading $filePath")
@@ -218,8 +221,8 @@ object GitHubRepoCrawlerApp {
     log.info("page count :" + pageCount)
     (1 to pageCount) foreach { page =>
       getAllGitHubReposForOrg(organizationName, page).filter(x => !x.fork && x.language == "Java")
-        .map(x => cloneRepository(x,s"https://github.com/${x.login}/${x.name}",
-        KodeBeagleConfig.githubDir))
+        .map(x => cloneRepository(x, s"https://github.com/${x.login}/${x.name}",
+          KodeBeagleConfig.githubDir))
     }
   }
 
@@ -228,14 +231,14 @@ object GitHubRepoCrawlerApp {
     allGithubRepos.filter(x => x("fork") == "false").distinct
       .flatMap(fetchDetails).distinct.filter(x => x.language == "Java" && !x.fork)
       .map { x =>
-      if (zipOrClone.equalsIgnoreCase("clone")) {
-        cloneRepository(x, s"https://github.com/${x.login}/${x.name}",
-          KodeBeagleConfig.githubDir)
-     } else {
-        retryCount = 0
-        downloadRepository(x, KodeBeagleConfig.githubDir)
+        if (zipOrClone.equalsIgnoreCase("clone")) {
+          cloneRepository(x, s"https://github.com/${x.login}/${x.name}",
+            KodeBeagleConfig.githubDir)
+        } else {
+          retryCount = 0
+          downloadRepository(x, KodeBeagleConfig.githubDir)
+        }
       }
-    }
     next
   }
 }
