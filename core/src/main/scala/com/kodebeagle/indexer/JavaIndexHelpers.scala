@@ -20,6 +20,7 @@ package com.kodebeagle.indexer
 import java.util
 import java.util.Map.Entry
 
+import com.kodebeagle.javaparser.MethodInvocationResolver.{MethodJavadoc, TypeJavadoc}
 import com.kodebeagle.javaparser.SingleClassBindingResolver
 import com.kodebeagle.logging.Logger
 import com.kodebeagle.util.Utils
@@ -95,7 +96,7 @@ object FileMetaDataIndexHelper extends Logger {
         val childLine = Line(chlineNo, chcol, chlength)
         val children = agg.getOrElse(parentLine, mutable.Set.empty)
 
-        if(!(chlineNo == plineNo) || !(chcol == pcol)){
+        if (!(chlineNo == plineNo) || !(chcol == pcol)) {
           // only update if child is diff from parent
           children.add(childLine)
           agg.update(parentLine, children)
@@ -141,8 +142,8 @@ object FileMetaDataIndexHelper extends Logger {
         (e.method.equals(mth.method) && e.argTypes.size.equals(mth.argTypes.size)))
 
       def betterType(t1: List[String], t2: List[String]) = {
-        t1.zip(t2).map(e =>  {
-          if(e._1.equalsIgnoreCase("java.lang.Object")) e._2
+        t1.zip(t2).map(e => {
+          if (e._1.equalsIgnoreCase("java.lang.Object")) e._2
           else e._1
         })
       }
@@ -164,6 +165,7 @@ object FileMetaDataIndexHelper extends Logger {
     imports.map(e => ExternalRef(e, impVsVarLocMap.getOrElse(e, Set.empty).toSet,
       typeVsMethods.getOrElse(e, Set.empty).toSet)).toList
   }
+
   // scalastyle:on
 }
 
@@ -184,14 +186,14 @@ object TypesInFileIndexHelper extends Logger {
           case Some(v) => {
             val updatedVal = (v._1 + mthd.getTarget,
               v._2 + MethodType(mthd.getReturnType, mthd.getMethodName,
-                mthd.getArgTypes.toList, false))
+                mthd.getArgTypes.toList, false, mthd.getConstructor))
             agg.update(mthd.getTargetType, updatedVal)
           }
           // If value doesn't already exist, create and add to the map.
           case None => {
             agg.put(mthd.getTargetType, (Set(mthd.getTarget),
               Set(MethodType(mthd.getReturnType, mthd.getMethodName,
-                mthd.getArgTypes.toList, false))))
+                mthd.getArgTypes.toList, false, mthd.getConstructor))))
           }
         }
         agg
@@ -207,13 +209,13 @@ object TypesInFileIndexHelper extends Logger {
           case Some(v) => {
             agg.update(mthd.getEnclosingType,
               v + MethodType(mthd.getReturnType, mthd.getMethodName,
-                mthd.getArgs.values().toList, true))
+                mthd.getArgs.values().toList, true, Option(mthd.getReturnType).isDefined))
           }
           case None => {
             agg.put(mthd.getEnclosingType,
               Set(MethodType(mthd.getReturnType, mthd.getMethodName,
                 // we will loose the param order here.
-                mthd.getArgs.values().toList, true)))
+                mthd.getArgs.values().toList, true, Option(mthd.getReturnType).isDefined)))
           }
         }
         agg
@@ -264,3 +266,31 @@ object ExternalRefsIndexHelper extends Logger {
     Payload(payloadTypes, score, repoFileLocation)
   }
 }
+
+object JavaDocIndexHelper extends Logger {
+
+  def generateJavaDocs(repoId: Long, repoFileLocation: String,
+                       resolver: SingleClassBindingResolver): Set[TypeDocsIndices] = {
+
+    val commentIndices = mutable.Set.empty[TypeDocsIndices]
+
+    for (javadoc: TypeJavadoc <- resolver.getTypeJavadocs) {
+
+      val methodJavaDocs = mutable.Set.empty[PropertyDocs]
+
+      for (methodJavadoc: MethodJavadoc <- javadoc.getMethodJavadocs) {
+
+        methodJavaDocs.add(new PropertyDocs(methodJavadoc.getName,methodJavadoc.getComment))
+
+      }
+
+      commentIndices.add(new TypeDocsIndices(javadoc.getName,
+        javadoc.getComment, methodJavaDocs.toSet))
+
+    }
+
+    commentIndices.toSet
+  }
+
+}
+
