@@ -4,7 +4,7 @@
 
 [![Build](https://travis-ci.org/Imaginea/KodeBeagle.svg?branch=master)](https://travis-ci.org/Imaginea/KodeBeagle/builds)
 
- [![Quality Gate](https://sonarqube.com/api/badges/measure?metric=coverage)](https://sonarqube.com/dashboard/index/Kodebeagle)
+ [![Quality Gate](https://sonarqube.com/api/badges/gate?key=Kodebeagle)](https://sonarqube.com/dashboard/index/Kodebeagle)
 
 We use [gh-pages](https://pages.github.com/) and Jekyll for demo web ui.
 
