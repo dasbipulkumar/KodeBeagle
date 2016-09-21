@@ -67,6 +67,9 @@ object KodeBeagleConfig extends ConfigReader {
   private[kodebeagle] val repoIndicesBackupPath: String =
     get("kodebeagle.hdfs.indices.backup.path").get
 
+  private[kodebeagle] val stackoverflowRawDataPath: String =
+    get("kodebeagle.hdfs.stackoverflow.raw.path").get
+
   def nextToken(arr: Array[String] = githubTokens): String = {
     if (lastIndex == arr.length - 1) {
       lastIndex = 0
