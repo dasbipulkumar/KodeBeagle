@@ -96,3 +96,6 @@ case class TypeDocsIndices(typeName: String, typeDoc: String,
                            propertyDocs: Set[PropertyDocs]) extends Property
 
 case class Docs(fileName: String, docs: Set[TypeDocsIndices])
+
+case class StackoverflowIntentIndicies(id: Long, title: String, searchTokens: String,
+                         intentTokens: String, tags: List[String], score: Long)

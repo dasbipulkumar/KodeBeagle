@@ -114,7 +114,7 @@ object KodeBeagleBuild extends Build {
     autoScalaLibrary := true,
     scalaVersion := "2.10.4")
 
-  def coreSettings = kodebeagleSettings ++ Seq(libraryDependencies ++= Dependencies.kodebeagle)++ Seq(jacoco.settings:_*)
+  def coreSettings = kodebeagleSettings ++ Seq(libraryDependencies ++= Dependencies.kodebeagle) ++ Seq(jacoco.settings:_*)
 
   def fatJarSettings = kodebeagleSettings ++ Seq(libraryDependencies ++= Dependencies.kodebeagleProvided) ++ Seq(assemblyMergeStrategy in assembly := {
     case "plugin.properties" | "plugin.xml" | ".api_description" | "META-INF/eclipse.inf" | ".options" => MergeStrategy.first
@@ -177,6 +177,8 @@ object Dependencies {
   val junit = "junit" % "junit" % "4.12"
   val rhino = "org.mozilla" % "rhino" % "1.7R4"
 
+  val lucene = "org.apache.lucene" % "lucene-analyzers-common" % "6.2.0"
+
   // val gitblit = ("com.gitblit" % "gitblit" % "1.8.0").intransitive()
 
   //Eclipse dependencies for Tassal libs
@@ -197,7 +199,7 @@ object Dependencies {
   }
 
   val base = Seq(akka, httpClient, scalastyle, scalaTest, slf4j, json4s, config, json4sJackson, commonsIO,
-    guava, compress, junit, rhino, jgit)
+    guava, compress, junit, rhino, jgit, lucene)
 
   val kodebeagle = base ++ EclipseDeps.allDeps ++ spark ++ Seq(esSpark)
 

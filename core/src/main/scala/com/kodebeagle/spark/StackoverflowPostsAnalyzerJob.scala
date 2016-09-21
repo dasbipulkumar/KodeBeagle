@@ -17,7 +17,8 @@
 package com.kodebeagle.spark
 
 import com.kodebeagle.configuration.KodeBeagleConfig
-import com.kodebeagle.model.{StackoverflowPost, StackoverflowRawPost}
+import com.kodebeagle.indexer.StackoverflowIntentIndicies
+import com.kodebeagle.model.{StackoverflowIndex, StackoverflowPost, StackoverflowRawPost}
 import com.kodebeagle.util.SparkIndexJobHelper._
 import org.apache.spark.SparkConf
 
@@ -37,12 +38,18 @@ object StackoverflowPostsAnalyzerJob {
 
     // val stackoverflowPostsDataPath = "/home/bipulk/Development/data/Stackoverflow_dump/Posts.xml"
 
-    val rawDataRdd = sc.textFile(KodeBeagleConfig.sparkMaster).
+    val rawDataRdd = sc.textFile(KodeBeagleConfig.stackoverflowRawDataPath).
            flatMap(dataLine => StackoverflowRawPost(dataLine)).
             map(rawPostObj => (rawPostObj.parentId,rawPostObj)).
             groupByKey().
-            map(x => StackoverflowPost(x._2)).
-            saveAsTextFile(KodeBeagleConfig.sparkMaster)
+            map(x => StackoverflowPost(x._2)).filter(_.isDefined).
+            filter(_.get.score > 0).filter(_.get.answerCount > 0).
+            map(y => StackoverflowIndex(y.get)).filter(_.isDefined).
+            filter(_.get.tags.contains("java")).
+            map(z => toIndexTypeJson("java", "stackoverflow",
+              StackoverflowIntentIndicies(z.get.id, z.get.title,
+                z.get.searchTokens, z.get.intentTokens, z.get.tags, z.get.score))).
+            saveAsTextFile(s"${KodeBeagleConfig.repoIndicesHdfsPath}Java/stackoverflow")
 
   }
 
