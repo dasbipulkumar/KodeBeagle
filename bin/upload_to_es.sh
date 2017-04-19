@@ -137,7 +137,8 @@ curl -X PUT localhost:9200/java/aggregation/_mapping -d '{
 	"aggregation": {
 		"properties": {
 			"name": {
-				"type": "string"
+				"type": "string",
+				"analyzer": "keyword_analyzer"
 			},
 			"score": {
 				"type": "long"
@@ -189,38 +190,46 @@ curl -X PUT localhost:9200/java/aggregation/_mapping -d '{
 }'
 
 curl -XPUT localhost:9200/java/filemetadata/_mapping -d '{
-    "filemetadata": {
+  "filemetadata": {
+    "properties": {
+      "repoId": {
+        "type": "integer",
+        "index": "not_analyzed"
+      },
+      "fileName": {
+        "type": "string",
+        "index": "not_analyzed"
+      },
+      "superTypes": {
+        "type": "object",
+        "enabled": false
+      },
+      "fileTypes": {
         "properties": {
-            "repoId": {
-				"type": "integer",
-				"index": "not_analyzed"
-			},
-			"fileName": {
-				"type": "string",
-				"index": "not_analyzed"
-			},
-			"superTypes": {
-                "type" : "object",
-                "enabled" : false
-            },
-            "fileTypes": {
-                "type" : "object",
-                "enabled" : false
-            },
-            "externalRefList": {
-                "type" : "object",
-                "enabled" : false
-            },
-            "methodDefinitionList": {
-                "type" : "object",
-                "enabled" : false
-            },
-            "internalRefList": {
-                "type" : "object",
-                "enabled" : false
-            }
+          "fileType": {
+            "type": "string",
+            "analyzer": "keyword_analyzer"
+          },
+          "loc": {
+            "type": "string",
+            "index": "no"
+          }
         }
+      },
+      "externalRefList": {
+        "type": "object",
+        "enabled": false
+      },
+      "methodDefinitionList": {
+        "type": "object",
+        "enabled": false
+      },
+      "internalRefList": {
+        "type": "object",
+        "enabled": false
+      }
     }
+  }
 }'
 
 curl -XPUT localhost:9200/java/sourcefile/_mapping -d '{
@@ -260,7 +269,7 @@ curl -XPUT localhost:9200/java/repotopic/_mapping -d '{
 			"login": {
 				"type": "string"
 			},
-			"name": {
+			"repoName": {
 				"type": "string"
 			},
 			"files": {
@@ -288,6 +297,160 @@ curl -XPUT localhost:9200/java/repotopic/_mapping -d '{
 		}
 	}
 }'
+
+
+curl -XPUT localhost:9200/java/documentation/_mapping -d '{
+	"documentation": {
+		"properties": {
+			"fileName": {
+				"type": "string",
+				"index": "not_analyzed"
+			},
+			"docs": {
+                "type": "nested",
+                "include_in_parent": true,
+                "properties": {
+                    "typeName": {
+                      "type": "string",
+                      "analyzer": "keyword_analyzer"
+                    },
+                    "typeDoc": {
+                      "type": "string",
+                      "index": "no"
+                    },
+                    "propertyDocs": {
+                       "properties": {
+                         "propertyName": {
+                           "type": "string",
+                           "analyzer": "keyword_analyzer"
+                         },
+                         "propertyDoc": {
+                           "type": "string",
+                           "index": "no"
+                         }
+                       }
+
+                    }
+                }
+
+            }
+        }
+	}
+}'
+
+curl -XPUT localhost:9200/java/filedetails/_mapping -d '{
+  "filedetails": {
+    "properties": {
+      "file": {
+        "type": "string",
+        "index": "not_analyzed"
+      },
+      "commits": {
+        "type": "object",
+        "enabled": "false"
+      },
+      "topAuthors": {
+        "type": "string",
+        "index": "no"
+      },
+      "coChange": {
+        "type": "string",
+        "index": "no"
+      }
+    }
+  }
+}'
+ 
+
+curl -XPUT localhost:9200/java/repodetails/_mapping -d '{
+  "repodetails": {
+    "properties": {
+      "remote": {
+        "type": "string",
+        "index": "not_analyzed"
+      },
+      "gitHubInfo": {
+        "properties": {
+          "id": {
+            "type": "long",
+            "index": "not_analyzed"
+          },
+          "login": {
+            "type": "string",
+            "index": "not_analyzed"
+          },
+          "name": {
+            "type": "string",
+            "index": "not_analyzed"
+          },
+          "fullName": {
+            "type": "string",
+            "index": "not_analyzed"
+          },
+          "isPrivate": {
+            "type": "boolean",
+            "index": "not_analyzed"
+          },
+          "isFork": {
+            "type": "boolean",
+            "index": "not_analyzed"
+          },
+          "size": {
+            "type": "long",
+            "index": "not_analyzed"
+          },
+          "watchersCount": {
+            "type": "long",
+            "index": "not_analyzed"
+          },
+          "language": {
+            "type": "string",
+            "index": "not_analyzed"
+          },
+          "forksCount": {
+            "type": "long",
+            "index": "not_analyzed"
+          },
+          "subscribersCount": {
+            "type": "long",
+            "index": "not_analyzed"
+          },
+          "defaultBranch": {
+            "type": "string",
+            "index": "not_analyzed"
+          },
+          "stargazersCount": {
+            "type": "long",
+            "index": "not_analyzed"
+          }
+        }
+      },
+      "stats": {
+      "properties": {
+        "sloc": {
+          "type": "long",
+          "index": "not_analyzed"
+        },
+        "fileCount": {
+          "type": "long",
+          "index": "not_analyzed"
+        },
+        "size": {
+          "type": "long",
+          "index": "not_analyzed"
+        }
+      	}
+      },
+      "gitHistory": {
+        "type": "object",
+        "enabled": false
+      }
+    }
+  }
+}'
+
+
+
 
 for f in `find $1 -name '*'`
 do
