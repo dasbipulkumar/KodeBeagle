@@ -35,6 +35,7 @@ object KodeBeagleConfig extends ConfigReader {
   private[kodebeagle] val sparkMethodsOutput = get("kodebeagle.spark.method.outputDir").get
 
   private[kodebeagle] val repoCloneDir: String = get("kodebeagle.repo.cloneDir").get
+  private[kodebeagle] val repoStoreDir: String = get("kodebeagle.repo.storeDir").get
   private[kodebeagle] val repoUpdateFreqDays: Int = get("kodebeagle.repo.update.days").get.toInt
   private[kodebeagle] val remoteUrlPrefix: String = get("kodebeagle.repo.remoteUrlPrefix").get
 
@@ -53,11 +54,17 @@ object KodeBeagleConfig extends ConfigReader {
   private[kodebeagle] val esourceFileIndex: String = get("kodebeagle.es.sourceFileIndex").get
   private[kodebeagle] val metadataRange: String = get("kodebeagle.metadata.range").get
   private[kodebeagle] val chunkSize: String = get("kodebeagle.metadata.chunk-size").get
+  private[kodebeagle] val maxGitFileSize = get("kodebeagle.github.repo.max.size").get.toInt
+  private[kodebeagle] val minStars = get("kodebeagle.repo.min.stars").get.toInt
   private[kodebeagle] val httpClientMaxRetries: Int =
     get("kodebeagle.httpClient.max-retries").get.toInt
 
   private[kodebeagle] val repoIndicesHdfsPath: String = get("kodebeagle.hdfs.indices.path").get
-  val repoMetaDataHdfsPath: String = get("kodebeagle.hdfs.repo.meta.path").get
+  private[kodebeagle] val repoMetaDataHdfsPath: String = get("kodebeagle.hdfs.repo.meta.path").get
+  private[kodebeagle] val typesInfoLocation: String = get("kodebeagle.hdfs.repo.typesinfo.path").get
+
+  private[kodebeagle] val repoIndicesBackupPath: String =
+    get("kodebeagle.hdfs.indices.backup.path").get
 
   def nextToken(arr: Array[String] = githubTokens): String = {
     if (lastIndex == arr.length - 1) {

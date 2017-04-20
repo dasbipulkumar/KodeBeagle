@@ -21,6 +21,7 @@ import com.kodebeagle.indexer._
 import com.kodebeagle.javaparser.JavaASTParser.ParseType
 import com.kodebeagle.javaparser.{JavaASTParser, SingleClassBindingResolver}
 import com.kodebeagle.logging.Logger
+import com.kodebeagle.model.GithubRepo.GithubRepoInfo
 import org.eclipse.jdt.core.dom.CompilationUnit
 
 import scala.util.Try
@@ -31,22 +32,19 @@ class JavaRepo(val baseRepo: GithubRepo) extends Repo with Logger
   // TODO: This constants needs to go somewhere else
   private val JAVA_LANGUAGE = "java"
 
-  override def files: List[JavaFileInfo] = {
-    if (languages.contains(JAVA_LANGUAGE)) {
-      baseRepo.files
-        .filter(_.fileName.endsWith(".java"))
-        .map(f => new JavaFileInfo(f))
-    } else {
-      Nil
-    }
+  override def files: Iterator[JavaFileInfo] = baseRepo.files
+    .filter(_.extractLang().equalsIgnoreCase("java")).map(new JavaFileInfo(_, this))
+
+
+  def summary: JavaRepoSummary = {
+    val agg = baseRepo.gitLogAggregation
+    JavaRepoSummary(GithubRepo.remote, baseRepo.repoInfo.get,
+      GitHistory(agg.mostChangedFiles(10).map(_._1), agg.allCommits.map(_.commit).toList))
   }
-
-  override def statistics: JavaRepoStatistics = new JavaRepoStatistics(baseRepo.statistics)
-
-  override def languages: Set[String] = baseRepo.languages
 }
 
-class JavaFileInfo(baseFile: GithubFileInfo) extends FileInfo with LazyLoadSupport with Logger {
+class JavaFileInfo(baseFile: GithubFileInfo, repo: JavaRepo) extends FileInfo
+  with LazyLoadSupport with Logger {
 
   assert(baseFile.fileName.endsWith(".java"),
     s"A java file is expected. Actual file: ${baseFile.fileName}")
@@ -60,6 +58,8 @@ class JavaFileInfo(baseFile: GithubFileInfo) extends FileInfo with LazyLoadSuppo
   private var _repoPath: Option[String] = None
 
   private var _typesInFile: Option[TypesInFile] = None
+
+  private var _javaDoc: Option[Set[TypeDocsIndices]] = None
 
   def searchableRefs: TypeReference = {
     getOrCompute(_searchableRefs, () => {
@@ -96,6 +96,23 @@ class JavaFileInfo(baseFile: GithubFileInfo) extends FileInfo with LazyLoadSuppo
     })
   }
 
+  def javaDocs: Set[TypeDocsIndices] = {
+    getOrCompute(_javaDoc, () => {
+      parse()
+      _javaDoc.get
+    })
+  }
+
+  def fileDetails: FileDetails = {
+    // TODO: Revisit #600 and explain why it happens
+    val agg = repo.baseRepo.gitLogAggregation
+    val file = baseFile.filePath
+    val commitCount = agg.fileCommmitCount(file)
+    val topAuthors = agg.topAuthors(file, 5).map(_._1)
+    val cooccuring = agg.coOccuringFiles(file, 10).map(_._1)
+    FileDetails(repoFileLocation, commitCount, topAuthors, cooccuring)
+  }
+
   override def fileName: String = baseFile.fileName
 
   override def sloc: Int = baseFile.sloc
@@ -110,6 +127,16 @@ class JavaFileInfo(baseFile: GithubFileInfo) extends FileInfo with LazyLoadSuppo
 
   def isTestFile(): Boolean = imports.exists(_.contains("org.junit"))
 
+  // Reset the generated indices to None so that the older strings can be GCed
+  def free(): Unit = {
+    _repoPath = None
+    _searchableRefs = None
+    _fileMetaData = None
+    _imports = None
+    _javaDoc = None
+    _typesInFile = None
+  }
+
   /**
     * This method parses the java file and updates all that needs to be exposed by this class.
     *
@@ -123,7 +150,7 @@ class JavaFileInfo(baseFile: GithubFileInfo) extends FileInfo with LazyLoadSuppo
 
     import scala.collection.JavaConversions._
 
-    val parser: JavaASTParser = new JavaASTParser(true)
+    val parser: JavaASTParser = new JavaASTParser(true, true)
     _repoPath = Option(s"${baseFile.githubRepoInfo.login}/${baseFile.githubRepoInfo.name}")
 
     // The file may not even be well formed, so the parser may throw an
@@ -137,8 +164,10 @@ class JavaFileInfo(baseFile: GithubFileInfo) extends FileInfo with LazyLoadSuppo
       log.error(s"Compilation unit is null for $fileName")
       _imports = _emptyImports
       _searchableRefs = emptySearchableRefs(repoFileLocation)
-      _fileMetaData = emptyFileMetadata(repoId,repoFileLocation)
-      _typesInFile = emptyTypesInFile(repoPath,repoFileLocation)
+      _fileMetaData = emptyFileMetadata(repoId, repoFileLocation)
+      _typesInFile = emptyTypesInFile(repoPath, repoFileLocation)
+      _javaDoc = _emptyJavaDocs
+
     } else {
       val scbr: SingleClassBindingResolver = new SingleClassBindingResolver(cu.get)
       scbr.resolve()
@@ -156,19 +185,21 @@ class JavaFileInfo(baseFile: GithubFileInfo) extends FileInfo with LazyLoadSuppo
       _typesInFile = Option(TypesInFile(repoPath, repoFileLocation,
         TypesInFileIndexHelper.usedTypesInFile(scbr),
         TypesInFileIndexHelper.declaredTypesInFile(scbr)))
+      _javaDoc = Option(JavaDocIndexHelper.generateJavaDocs(repoId, repoFileLocation, scbr))
     }
 
   }
 }
 
-class JavaRepoStatistics(repoStatistics: RepoStatistics) extends RepoStatistics {
+case class JavaRepoSummary(remote: String, gitHubInfo: GithubRepoInfo, gitHistory: GitHistory)
 
-  override def sloc: Int = repoStatistics.sloc
+case class GitHistory(mostChanged: List[String], commits: List[Commit])
 
-  override def fileCount: Int = repoStatistics.fileCount
+case class FileDetails(file: String, commits: List[Commit], topAuthors: List[String],
+                       coChange: List[String])
 
-  override def size: Long = repoStatistics.size
-}
+case class JavaRepoStatistics(sloc: Int, fileCount: Int, size: Long) extends RepoStatistics
+
 
 object JavaFileInfo {
 
@@ -179,21 +210,22 @@ object JavaFileInfo {
   val _emptyInternalRefList = List.empty[InternalRef]
   val _emptyMethodTypeLocList = List.empty[MethodTypeLocation]
   val _emptyMethodDefLocList = List.empty[MethodDefinition]
-  val _emptyDeclaredTypeMap = Map.empty[String,Set[MethodType]]
-  val _emptyUsedTypesMap = Map.empty[String,(Set[String],Set[MethodType])]
+  val _emptyDeclaredTypeMap = Map.empty[String, Set[MethodType]]
+  val _emptyUsedTypesMap = Map.empty[String, (Set[String], Set[MethodType])]
   val _emptyImports: Option[Set[String]] = Option(Set.empty)
   val _emptySuperTypes = SuperTypes(Map.empty, Map.empty)
+  val _emptyJavaDocs: Option[Set[TypeDocsIndices]] = Option(Set.empty)
 
   def emptySearchableRefs(repoFileLocation: String): Option[TypeReference] =
     Option(TypeReference(_emptyContextSet, Payload(_emptyPayLoadTypeSet,
       0L, repoFileLocation), 0L, repoFileLocation))
 
   def emptyFileMetadata(repoId: Long, repoFileLocation: String): Option[FileMetaData] =
-    Option(FileMetaData(repoId, repoFileLocation, _emptySuperTypes,_emptyTypeDeclarationList,
+    Option(FileMetaData(repoId, repoFileLocation, _emptySuperTypes, _emptyTypeDeclarationList,
       _emptyExtRefList, _emptyMethodDefLocList, _emptyInternalRefList))
 
   def emptyTypesInFile(repoPath: String, repoFileLocation: String): Option[TypesInFile] =
-    Option(TypesInFile(repoPath, repoFileLocation,_emptyUsedTypesMap, _emptyDeclaredTypeMap))
+    Option(TypesInFile(repoPath, repoFileLocation, _emptyUsedTypesMap, _emptyDeclaredTypeMap))
 
 }
 

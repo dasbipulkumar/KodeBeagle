@@ -131,6 +131,7 @@ object KodeBeagleBuild extends Build {
       git.useGitDescribe := true,
       scalacOptions := scalacOptionsList,
       //resolvers += Resolver.mavenLocal,
+      resolvers += Resolver.url("http://gitblit.github.io/gitblit-maven/"),
       updateOptions := updateOptions.value.withCachedResolution(true),
       updateOptions := updateOptions.value.withLatestSnapshots(false),
       crossPaths := false,
@@ -150,7 +151,8 @@ object Dependencies {
   val spark = Seq(sparkCore, sparkSql, graphx)
   val sparkProvided = spark.map(d => d % "provided")
 
-  val esSpark = "org.elasticsearch" %% "elasticsearch-spark" % "2.1.0.Beta4"
+  // val esSpark = "org.elasticsearch" %% "elasticsearch-spark" % "2.1.0.Beta4"
+  val esSpark = "org.elasticsearch" % "elasticsearch-spark_2.10" % "5.0.0-alpha4"
   val esSparkExcluded = esSpark.exclude("org.apache.spark", "spark-sql_2.10")
     .exclude("org.apache.spark", "spark-core_2.10")
 
@@ -172,6 +174,8 @@ object Dependencies {
 
   val junit = "junit" % "junit" % "4.12"
   val rhino = "org.mozilla" % "rhino" % "1.7R4"
+
+  // val gitblit = ("com.gitblit" % "gitblit" % "1.8.0").intransitive()
 
   //Eclipse dependencies for Tassal libs
   object EclipseDeps {

@@ -14,54 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package com.kodebeagle.indexer
 
-package com.kodebeagle.model
+/**
+  * Created by bipulk on 4/8/16.
+  */
+trait Property
 
-trait Repo extends Serializable {
+trait Type {
+  type T <: Property
 
-  def files: Iterator[FileInfo]
+  def name: String
 
-}
-
-trait FileInfo extends Serializable {
-
-  /**
-    * A name for this file in repository that uniquely identifies it.
-    *
-    * e.g. the path of file in the repository hierarchy.
-    *
-    * repoFileLocation is complete Repository URL of particular file
-    *
-    * @return
-    */
-  def fileName: String
-
-  def language: String
-
-  def fileContent: String
-
-  def sloc: Int
-
-  def repoId: Long
-
-  def repoFileLocation: String
-}
-
-trait RepoStatistics {
-
-  def sloc: Int
-
-  def fileCount: Int
-
-  def size: Long
-}
-
-trait LazyLoadSupport {
-
-  def getOrCompute[T](maybeVal: Option[T], compute: () => T): T = {
-    maybeVal match {
-      case Some(value) => value
-      case None => compute()
-    }
-  }
+  def props: Set[T]
 }

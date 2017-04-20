@@ -19,6 +19,7 @@ package com.kodebeagle.parser
 
 import java.util.regex.Matcher
 
+import com.kodebeagle.indexer.{JavaDocIndexHelper, TypeDocsIndices}
 import com.kodebeagle.javaparser.{JavaASTParser, SingleClassBindingResolver}
 import com.kodebeagle.javaparser.JavaASTParser.ParseType
 import org.eclipse.jdt.core.dom.{CompilationUnit, SimpleName}
@@ -50,7 +51,7 @@ trait JavaParserSuiteTrait {
   def constructResolver(fileName: String): Option[SingleClassBindingResolver] = {
     val stream = this.getClass.getResourceAsStream(fileName)
     val fileContent = Source.fromInputStream(stream).mkString
-    val parser: JavaASTParser = new JavaASTParser(true)
+    val parser: JavaASTParser = new JavaASTParser(true,true)
     val cu: CompilationUnit = parser.
       getAST(fileContent, ParseType.COMPILATION_UNIT).asInstanceOf[CompilationUnit]
     val scbr = new SingleClassBindingResolver(cu)
@@ -71,7 +72,7 @@ class MethodInvocationResolverSuite extends FunSuite with BeforeAndAfterAll
     import scala.collection.JavaConversions._
     val expectedRoureqMethodInvoks = Set("getRoute", "getRequest", "RoutedRequest")
     val methodDecl = enumTestFileResolver.get.getDeclaredMethods
-    .find(_.getMethodName == "handleResponse").get
+      .find(_.getMethodName == "handleResponse").get
 
     val roureqMethodInvoks=enumTestFileResolver.get.getMethodInvoks.get(methodDecl).
       groupBy(_.getTargetType).get("org.apache.http.impl.client.RoutedRequest")
@@ -79,6 +80,15 @@ class MethodInvocationResolverSuite extends FunSuite with BeforeAndAfterAll
     roureqMethodInvoks.get.foreach {
       methodInvoke =>
         assert(expectedRoureqMethodInvoks.contains(methodInvoke.getMethodName))
+    }
+  }
+
+  test("return type test") {
+    import scala.collection.JavaConversions._
+    val methodDeclarations = enumTestFileResolver.get.getDeclaredMethods
+    if(methodDeclarations.size() > 0) {
+      val methodDecl = methodDeclarations.find(_.getMethodName == "handleResponse").get
+      assert("org.apache.http.impl.client.RoutedRequest".equals(methodDecl.getReturnType))
     }
   }
 
@@ -123,6 +133,7 @@ class MethodInvocationResolverSuite extends FunSuite with BeforeAndAfterAll
       "x.y.z.DefaultRequestDirector.InternalEnum")
     assert(fullyQualifiedTypesInFile.get("ExternalEnum") == "x.y.z.ExternalEnum")
   }
+
 
 }
 
@@ -183,6 +194,54 @@ class JavaASTParserSuite extends FunSuite with BeforeAndAfterAll with JavaParser
     resolvers.flatMap(r => r.getInterfaces).foreach(in => {
       in._2.foreach(str => isValidType(str))
     })
+  }
+
+  test("javadoc for Types, methods, enums") {
+
+    val javadocResolver: SingleClassBindingResolver =
+      constructResolver("/JavadocParsingTestClass.java").get
+
+    val comments: Set[TypeDocsIndices] = JavaDocIndexHelper.
+      generateJavaDocs(1L,"test",javadocResolver)
+
+    assert(comments.size == 4)
+
+    for(comment: TypeDocsIndices <- comments){
+
+      if (comment.typeName.equals("x.y.z.HelloWorld")){
+
+        assert(comment.typeDoc.trim.contains("Test class comments"))
+        assert(comment.propertyDocs.size == 2)
+        comment.propertyDocs.foreach(mthdCmnt =>
+          assert(mthdCmnt.propertyDoc.contains("Test class method")))
+      }
+
+      if (comment.typeName.equals("x.y.z.HelloWorldInterface")){
+
+        assert(comment.typeDoc.trim.contains("Test interface comments"))
+        assert(comment.propertyDocs.size == 1)
+        comment.propertyDocs.foreach(mthdCmnt =>
+          assert(mthdCmnt.propertyDoc.contains("Test interface method comments")))
+      }
+
+      if (comment.typeName.equals("x.y.z.Direction")){
+
+        assert(comment.typeDoc.trim.contains("Test Enum comments"))
+        assert(comment.propertyDocs.size == 1)
+        comment.propertyDocs.foreach(mthdCmnt =>
+          assert(mthdCmnt.propertyDoc.contains("Test Enum method comments")))
+      }
+
+      if (comment.typeName.equals("x.y.z.OrderedPair")){
+
+        assert(comment.typeDoc.trim.contains("Test generic class comments"))
+        assert(comment.propertyDocs.size == 1)
+        comment.propertyDocs.foreach(mthdCmnt =>
+          assert(mthdCmnt.propertyDoc.contains("Test generic class method comments")))
+      }
+
+    }
+
   }
 
 }
